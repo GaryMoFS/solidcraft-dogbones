@@ -1,0 +1,187 @@
+{
+  "id": "dogbones",
+  "name": "Dogbones",
+  "version": "0.1.0",
+  "description": "Create and update CNC dogbone corner reliefs (Corner, Minimal Corner, Along Long Side, Along Short Side) on internal corners of bodies, upper faces, or selected edges.",
+  "capabilities": ["commands@0.2", "storage@0.1", "dialog@0.1"],
+  "runtime": {
+    "module": "dogbones.wasm",
+    "data_format": 1,
+    "commands": [
+      "document.inspect",
+      "model.faces",
+      "model.edges",
+      "inspect.classify_points",
+      "sketch.create",
+      "sketch.circle.center",
+      "sketch.finish",
+      "solid.extrude",
+      "selection.delete",
+      "storage.get",
+      "storage.set"
+    ],
+    "limits": {
+      "fuel": 200000000,
+      "memory_mib": 64,
+      "deadline_ms": 15000
+    },
+    "entries": [
+      {
+        "name": "dogbones",
+        "effect": "edit",
+        "dialog_hook": true,
+        "slots": [
+          { "kind": "menu", "name": "Create Dogbones..." },
+          { "kind": "ribbon", "name": "Dogbones" }
+        ],
+        "input_schema": {
+          "type": "object",
+          "x-solidcraft-icon": "icons/dogbones.svg",
+          "x-solidcraft-order": [
+            "selection_type",
+            "bodies",
+            "upper_faces",
+            "edges",
+            "tool_diameter",
+            "additional_clearance",
+            "dogbone_type",
+            "corner_interference",
+            "show_advanced",
+            "visible_gap",
+            "corner_angle_tolerance_deg",
+            "feature_name"
+          ],
+          "properties": {
+            "selection_type": {
+              "type": "string",
+              "title": "Selection Type",
+              "description": "Choose whether to detect corners across whole bodies, from an upper CNC face orientation, or on specific edges.",
+              "oneOf": [
+                { "const": "body", "title": "Body Select", "x-solidcraft-icon": "icons/select_body.svg" },
+                { "const": "upper_face", "title": "Upper Face Select", "x-solidcraft-icon": "icons/select_face.svg" },
+                { "const": "edge", "title": "Edge Select", "x-solidcraft-icon": "icons/select_edge.svg" }
+              ],
+              "default": "body"
+            },
+            "bodies": {
+              "type": "array",
+              "title": "Bodies",
+              "description": "Select one or more bodies to add dogbones to (machining direction is inferred from the largest panel face).",
+              "items": { "type": "object" },
+              "x-solidcraft-selection": { "version": 1, "accept": ["body"] },
+              "x-solidcraft-visible-when": { "field": "selection_type", "eq": "body" }
+            },
+            "upper_faces": {
+              "type": "array",
+              "title": "Upper Face",
+              "description": "Select one or more planar upper faces defining the CNC Z-up machining orientation.",
+              "items": { "type": "object" },
+              "x-solidcraft-selection": { "version": 1, "accept": ["face"] },
+              "x-solidcraft-visible-when": { "field": "selection_type", "eq": "upper_face" }
+            },
+            "edges": {
+              "type": "array",
+              "title": "Edges",
+              "description": "Select specific internal corner edges to add dogbones to.",
+              "items": { "type": "object" },
+              "x-solidcraft-selection": { "version": 1, "accept": ["edge"] },
+              "x-solidcraft-visible-when": { "field": "selection_type", "eq": "edge" }
+            },
+            "tool_diameter": {
+              "type": "number",
+              "title": "Tool Diameter",
+              "description": "Diameter of the cylindrical CNC end mill.",
+              "unit": "mm",
+              "exclusiveMinimum": 0,
+              "default": 6.0
+            },
+            "additional_clearance": {
+              "type": "number",
+              "title": "Additional Clearance",
+              "description": "Extra diameter added to Tool Diameter so CAM toolpath generators reliably enter the relief.",
+              "unit": "mm",
+              "minimum": 0,
+              "default": 0.025
+            },
+            "dogbone_type": {
+              "type": "string",
+              "title": "Type",
+              "description": "Dogbone relief style.",
+              "oneOf": [
+                { "const": "corner", "title": "Corner", "x-solidcraft-icon": "icons/type_corner.svg" },
+                { "const": "minimal_corner", "title": "Minimal Corner", "x-solidcraft-icon": "icons/type_minimal.svg" },
+                { "const": "along_long_side", "title": "Along Long Side", "x-solidcraft-icon": "icons/type_long.svg" },
+                { "const": "along_short_side", "title": "Along Short Side", "x-solidcraft-icon": "icons/type_short.svg" }
+              ],
+              "default": "corner"
+            },
+            "corner_interference": {
+              "type": "number",
+              "title": "Corner Interference",
+              "description": "Allowed radial interference at the corner vertex for Minimal Corner dogbones (reduces visible gap).",
+              "unit": "mm",
+              "minimum": 0,
+              "default": 0.25,
+              "x-solidcraft-visible-when": { "field": "dogbone_type", "eq": "minimal_corner" }
+            },
+            "show_advanced": {
+              "type": "boolean",
+              "title": "Advanced",
+              "description": "Show advanced dogbone settings (Visible Gap readout, Corner Angle Range, and Feature Name).",
+              "default": false
+            },
+            "visible_gap": {
+              "type": "string",
+              "title": "Visible Gap (90 deg)",
+              "description": "Calculated visible gap outside a 90 degree mating corner for the current settings (auto-updated).",
+              "default": "0.882 mm",
+              "x-solidcraft-visible-when": { "field": "show_advanced", "eq": true }
+            },
+            "corner_angle_tolerance_deg": {
+              "type": "number",
+              "title": "Corner Angle Range (+/-)",
+              "description": "Allowed deviation from 90 degrees when automatically detecting internal corners.",
+              "unit": "deg",
+              "minimum": 0,
+              "maximum": 89,
+              "default": 5.0,
+              "x-solidcraft-visible-when": {
+                "all": [
+                  { "field": "show_advanced", "eq": true },
+                  { "not": { "field": "selection_type", "eq": "edge" } }
+                ]
+              }
+            },
+            "feature_name": {
+              "type": "string",
+              "title": "Feature Name",
+              "description": "Base name for the generated dogbone sketch and cut features.",
+              "default": "Dogbone",
+              "x-solidcraft-visible-when": { "field": "show_advanced", "eq": true }
+            }
+          }
+        }
+      },
+      {
+        "name": "update-dogbones",
+        "effect": "edit",
+        "slots": [
+          { "kind": "menu", "name": "Update Dogbones" },
+          { "kind": "ribbon", "name": "Update Dogbones" }
+        ],
+        "input_schema": {
+          "type": "object",
+          "x-solidcraft-icon": "icons/update_dogbones.svg",
+          "properties": {
+            "remove_missing": {
+              "type": "boolean",
+              "title": "Prune Missing Bodies",
+              "description": "Remove stored dogbone recipes whose target body no longer exists in the design.",
+              "default": false
+            }
+          }
+        }
+      }
+    ]
+  }
+}
